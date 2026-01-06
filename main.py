@@ -2,7 +2,6 @@
 import os
 import re
 import logging
-import asyncio
 from aiohttp import web
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
@@ -21,7 +20,6 @@ WEBHOOK_PATH = "/webhook"
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 PORT = int(os.environ.get("PORT", 8080))
 
-# УБРАЛИ parse_mode ОТСЮДА!
 bot = Bot(token=TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
@@ -160,15 +158,16 @@ async def send_direct_link(callback: types.CallbackQuery, state: FSMContext):
         logging.exception("Ошибка при генерации ссылки")
         await callback.message.edit_text("Не удалось получить ссылку. Попробуй позже или другое видео.", parse_mode="HTML")
 
-# Webhook-сервер
-async def on_startup():
+# Фикс: добавлен параметр app (обязателен для aiohttp)
+async def on_startup(app):
     await bot.delete_webhook(drop_pending=True)
     await bot.set_webhook(WEBHOOK_URL)
     logging.info(f"Webhook установлен: {WEBHOOK_URL}")
 
-async def on_shutdown():
+async def on_shutdown(app):
     await bot.delete_webhook()
     await bot.session.close()
+    logging.info("Webhook удалён, сессия закрыта")
 
 app = web.Application()
 
