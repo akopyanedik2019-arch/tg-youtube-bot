@@ -15,13 +15,22 @@ from telegram.ext import (
     filters
 )
 
-BOT_TOKEN = os.environ["BOT_TOKEN"]
-PUBLIC_URL = os.environ["PUBLIC_URL"]
+# --- ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ ---
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+PUBLIC_URL = os.environ.get("RENDER_EXTERNAL_URL")  # Render автоматически подставляет
+if not PUBLIC_URL:
+    PUBLIC_URL = os.environ.get("PUBLIC_URL", "http://127.0.0.1:8080")  # fallback для локала
 
+# --- ПАПКА ДЛЯ ВИДЕО ---
 BASE_DIR = "videos"
 os.makedirs(BASE_DIR, exist_ok=True)
 
+# --- FLASK ---
 app = Flask(__name__)
+
+@app.route("/")
+def index():
+    return "Бот работает! Используй Telegram для управления."
 
 @app.route("/download/<filename>")
 def download(filename):
@@ -30,14 +39,11 @@ def download(filename):
         abort(404)
     return send_from_directory(BASE_DIR, filename, as_attachment=True)
 
-def run_flask():
-    app.run(host="0.0.0.0", port=8080)
-
+# --- TELEGRAM BOT ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🎬 Пришли ссылку на YouTube.\n\n"
-        "Я предложу варианты качества и дам прямую ссылку "
-        "на MP4 (H.264 + AAC)."
+        "🎬 Привет! Пришли ссылку на YouTube.\n"
+        "Я предложу варианты качества и дам прямую ссылку на MP4 (H.264 + AAC)."
     )
 
 async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -77,30 +83,21 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         fmt = f"bestvideo[vcodec=h264][height<={quality}]+bestaudio[acodec=aac]/best"
 
-    cmd = [
-        "yt-dlp",
-        url,
-        "-f", fmt,
-        "--merge-output-format", "mp4",
-        "-o", filepath
-    ]
-
     try:
-        subprocess.run(cmd, check=True, timeout=900)
-        link = f"{PUBLIC_URL}/download/{filename}"
-
-        await query.edit_message_text(
-            "✅ Готово!\n\n"
-            f"📥 Прямая ссылка:\n{link}\n\n"
-            "⚠️ Ссылка временная."
+        subprocess.run(
+            ["yt-dlp", url, "-f", fmt, "--merge-output-format", "mp4", "-o", filepath],
+            check=True,
+            timeout=900
         )
-
+        link = f"{PUBLIC_URL}/download/{filename}"
+        await query.edit_message_text(
+            f"✅ Готово!\n\n📥 Прямая ссылка:\n{link}\n\n⚠️ Ссылка временная."
+        )
     except subprocess.TimeoutExpired:
         await query.edit_message_text(
-            "⏱️ Видео слишком большое.\n"
-            "Попробуй меньшее качество."
+            "⏱️ Видео слишком большое или загрузка заняла слишком много времени.\n"
+            "Попробуй выбрать меньшее качество."
         )
-
     except Exception:
         await query.edit_message_text(
             "❌ Ошибка загрузки.\n"
@@ -108,11 +105,15 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 def run_bot():
+    if not BOT_TOKEN:
+        raise ValueError("BOT_TOKEN не найден! Проверь Environment Variables.")
     app_bot = ApplicationBuilder().token(BOT_TOKEN).build()
     app_bot.add_handler(CommandHandler("start", start))
     app_bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_link))
     app_bot.add_handler(CallbackQueryHandler(download_video))
     app_bot.run_polling()
 
-threading.Thread(target=run_flask).start()
-run_bot()
+# --- ЗАПУСК FLASK + BOT ---
+if __name__ == "__main__":
+    threading.Thread(target=run_bot).start()
+    app.run(host="0.0.0.0", port=8080)
