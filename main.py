@@ -16,12 +16,13 @@ from yt_dlp import YoutubeDL
 logging.basicConfig(level=logging.INFO)
 
 TOKEN = os.environ["BOT_TOKEN"]
-WEBHOOK_HOST = os.environ["WEBHOOK_HOST"]  # например https://your-bot.onrender.com
+WEBHOOK_HOST = os.environ["WEBHOOK_HOST"]  # https://your-service.onrender.com
 WEBHOOK_PATH = "/webhook"
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 PORT = int(os.environ.get("PORT", 8080))
 
-bot = Bot(token=TOKEN, parse_mode="HTML")
+# УБРАЛИ parse_mode ОТСЮДА!
+bot = Bot(token=TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 
@@ -71,27 +72,33 @@ youtube_regex = re.compile(r"(https?://)?(www\.)?(youtube|youtu)\.(com|be)/?.*")
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
-    await message.answer("Привет! Отправь ссылку на YouTube-видео, я дам прямые ссылки на скачивание в MP4 H.264 + AAC в разных качествах.")
+    await message.answer(
+        "Привет! Отправь ссылку на YouTube-видео, я дам прямые ссылки на скачивание в MP4 H.264 + AAC в разных качествах.",
+        parse_mode="HTML"
+    )
 
 @dp.message(F.text.regexp(youtube_regex))
 async def handle_youtube(message: types.Message, state: FSMContext):
     url = message.text.strip()
-    await message.answer("Анализирую видео...")
+    await message.answer("Анализирую видео...", parse_mode="HTML")
 
     try:
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
         if info.get("entries"):
-            await message.answer("Плейлисты не поддерживаются. Отправь ссылку на одно видео.")
+            await message.answer("Плейлисты не поддерживаются. Отправь ссылку на одно видео.", parse_mode="HTML")
             return
 
         title = info.get("title", "Видео").replace("<", "").replace(">", "")
         pro_formats = get_progressive_formats(info)
 
         if not pro_formats:
-            await message.answer("Нет доступных форматов MP4 H.264 + AAC (progressive). "
-                                 "Видео, вероятно, только в высоком качестве с отдельными потоками.")
+            await message.answer(
+                "Нет доступных форматов MP4 H.264 + AAC (progressive).\n"
+                "Видео, вероятно, только в высоком качестве с отдельными потоками.",
+                parse_mode="HTML"
+            )
             return
 
         kb = InlineKeyboardMarkup(inline_keyboard=[])
@@ -104,11 +111,15 @@ async def handle_youtube(message: types.Message, state: FSMContext):
         await state.set_state(States.waiting_quality)
         await state.update_data(video_url=url, title=title)
 
-        await message.answer(f"Доступные качества для <b>{title}</b>:\nВыбери:", reply_markup=kb)
+        await message.answer(
+            f"Доступные качества для <b>{title}</b>:\nВыбери:",
+            reply_markup=kb,
+            parse_mode="HTML"
+        )
 
     except Exception as e:
         logging.exception("Ошибка при извлечении информации")
-        await message.answer("Ошибка: неверная ссылка или видео недоступно.")
+        await message.answer("Ошибка: неверная ссылка или видео недоступно.", parse_mode="HTML")
 
 @dp.callback_query(F.data.startswith("quality:"))
 async def send_direct_link(callback: types.CallbackQuery, state: FSMContext):
@@ -117,7 +128,7 @@ async def send_direct_link(callback: types.CallbackQuery, state: FSMContext):
     video_url = data["video_url"]
     title = data.get("title", "video")
 
-    await callback.message.edit_text("Генерирую свежую ссылку...")
+    await callback.message.edit_text("Генерирую свежую ссылку...", parse_mode="HTML")
 
     try:
         with YoutubeDL(ydl_opts) as ydl:
@@ -125,11 +136,10 @@ async def send_direct_link(callback: types.CallbackQuery, state: FSMContext):
 
         target_format = next((f for f in info["formats"] if f["format_id"] == format_id), None)
         if not target_format:
-            await callback.message.edit_text("Формат больше недоступен.")
+            await callback.message.edit_text("Формат больше недоступен.", parse_mode="HTML")
             return
 
         dl_url = target_format["url"]
-        # Добавляем подсказку имени файла для браузера/менеджера загрузок
         safe_title = "".join(c if c.isalnum() or c in " _-" else "_" for c in title)
         dl_url += f"&title={safe_title}.mp4"
 
@@ -141,13 +151,14 @@ async def send_direct_link(callback: types.CallbackQuery, state: FSMContext):
         await callback.message.edit_text(
             f"Готовая прямая ссылка на <b>{title}</b>:\n"
             "Ссылка работает несколько часов. Кликай и скачивай!",
-            reply_markup=kb
+            reply_markup=kb,
+            parse_mode="HTML"
         )
         await state.clear()
 
     except Exception as e:
         logging.exception("Ошибка при генерации ссылки")
-        await callback.message.edit_text("Не удалось получить ссылку. Попробуй позже или другое видео.")
+        await callback.message.edit_text("Не удалось получить ссылку. Попробуй позже или другое видео.", parse_mode="HTML")
 
 # Webhook-сервер
 async def on_startup():
