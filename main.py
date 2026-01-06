@@ -15,7 +15,7 @@ from yt_dlp import YoutubeDL
 logging.basicConfig(level=logging.INFO)
 
 TOKEN = os.environ["BOT_TOKEN"]
-WEBHOOK_HOST = os.environ["WEBHOOK_HOST"]  # https://your-service.onrender.com
+WEBHOOK_HOST = os.environ["WEBHOOK_HOST"]  # https://your-service.onrender.com (без слеша в конце)
 WEBHOOK_PATH = "/webhook"
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 PORT = int(os.environ.get("PORT", 8080))
@@ -160,19 +160,25 @@ async def send_direct_link(callback: types.CallbackQuery, state: FSMContext):
 
 async def on_startup(app):
     try:
-        await bot.delete_webhook(drop_pending_updates=True)  # ИСПРАВЛЕНО!
-        await bot.set_webhook(url=WEBHOOK_URL)
-        logging.info(f"Webhook успешно установлен: {WEBHOOK_URL}")
+        current = await bot.get_webhook_info()
+        if current.url != WEBHOOK_URL:
+            await bot.delete_webhook()
+            await bot.set_webhook(url=WEBHOOK_URL)
+            logging.info(f"Webhook установлен/обновлён: {WEBHOOK_URL}")
+        else:
+            logging.info(f"Webhook уже правильный: {WEBHOOK_URL}")
     except Exception as e:
-        logging.error(f"Ошибка установки webhook: {e}")
+        logging.error(f"Ошибка webhook (попробую принудительно): {e}")
+        await bot.delete_webhook()
+        await bot.set_webhook(url=WEBHOOK_URL)
 
 async def on_shutdown(app):
     try:
-        await bot.delete_webhook(drop_pending_updates=True)
+        await bot.delete_webhook()
         await bot.session.close()
-        logging.info("Webhook удалён, сессия закрыта")
+        logging.info("Webhook удалён при выключении")
     except Exception as e:
-        logging.error(f"Ошибка при shutdown: {e}")
+        logging.error(f"Ошибка shutdown: {e}")
 
 app = web.Application()
 
