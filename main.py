@@ -15,7 +15,7 @@ from yt_dlp import YoutubeDL
 logging.basicConfig(level=logging.INFO)
 
 TOKEN = os.environ["BOT_TOKEN"]
-WEBHOOK_HOST = os.environ["WEBHOOK_HOST"]  # https://your-service.onrender.com (без слеша в конце)
+WEBHOOK_HOST = os.environ["WEBHOOK_HOST"]  # https://твой-сервис.onrender.com (без слеша в конце!)
 WEBHOOK_PATH = "/webhook"
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 PORT = int(os.environ.get("PORT", 8080))
@@ -116,7 +116,7 @@ async def handle_youtube(message: types.Message, state: FSMContext):
         )
 
     except Exception as e:
-        logging.exception("Ошибка при извлечении информации")
+        logging.exception("Ошибка yt-dlp")
         await message.answer("Ошибка: неверная ссылка или видео недоступно.", parse_mode="HTML")
 
 @dp.callback_query(F.data.startswith("quality:"))
@@ -155,28 +155,31 @@ async def send_direct_link(callback: types.CallbackQuery, state: FSMContext):
         await state.clear()
 
     except Exception as e:
-        logging.exception("Ошибка при генерации ссылки")
+        logging.exception("Ошибка генерации ссылки")
         await callback.message.edit_text("Не удалось получить ссылку. Попробуй позже или другое видео.", parse_mode="HTML")
 
 async def on_startup(app):
     try:
-        current = await bot.get_webhook_info()
-        if current.url != WEBHOOK_URL:
+        info = await bot.get_webhook_info()
+        if info.url != WEBHOOK_URL:
+            await bot.delete_webhook()  # Без параметров — безопасно для всех версий 3.x
+            await bot.set_webhook(url=WEBHOOK_URL)
+            logging.info(f"Webhook обновлён: {WEBHOOK_URL}")
+        else:
+            logging.info(f"Webhook уже стоит правильно: {WEBHOOK_URL}")
+    except Exception as e:
+        logging.error(f"Ошибка настройки webhook: {e}. Пытаюсь принудительно...")
+        try:
             await bot.delete_webhook()
             await bot.set_webhook(url=WEBHOOK_URL)
-            logging.info(f"Webhook установлен/обновлён: {WEBHOOK_URL}")
-        else:
-            logging.info(f"Webhook уже правильный: {WEBHOOK_URL}")
-    except Exception as e:
-        logging.error(f"Ошибка webhook (попробую принудительно): {e}")
-        await bot.delete_webhook()
-        await bot.set_webhook(url=WEBHOOK_URL)
+        except Exception as ee:
+            logging.error(f"Фатал при webhook: {ee}")
 
 async def on_shutdown(app):
     try:
         await bot.delete_webhook()
         await bot.session.close()
-        logging.info("Webhook удалён при выключении")
+        logging.info("Webhook удалён при shutdown")
     except Exception as e:
         logging.error(f"Ошибка shutdown: {e}")
 
