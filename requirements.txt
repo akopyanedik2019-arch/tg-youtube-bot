@@ -1,4 +1,5 @@
-aiogram==3.0.0b7
-yt-dlp==2023.10.13
+aiogram==3.13.0
+yt-dlp==2024.12.17.1
 ffmpeg-python==0.2.0
-python-dotenv==1.0.0
+python-dotenv==1.0.1
+aiofiles==24.1.0
